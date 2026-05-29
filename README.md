@@ -186,7 +186,7 @@ No active exploitation. No payload injection. Safe for production endpoints.
 
 ## Architecture
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for system design, data flow, and component breakdown.
+See [ARCHITECTURE.md](docs/ARCHITECTURE.md) for system design, data flow, and component breakdown.
 
 **Core layers:**
 - `scanner/` — Raw data extraction only
