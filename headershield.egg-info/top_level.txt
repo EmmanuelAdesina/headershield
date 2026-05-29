@@ -1,6 +1,0 @@
-analyzer
-core
-evidence
-reports
-scanner
-tests
