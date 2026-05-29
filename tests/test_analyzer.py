@@ -3,8 +3,8 @@ Tests for the analyzer layer.
 """
 
 import unittest
-from analyzer.header_rules import RULES
-from core.enums.severity import Severity
+from headershield.analyzer.header_rules import RULES
+from headershield.core.enums.severity import Severity
 
 
 class TestHeaderRules(unittest.TestCase):

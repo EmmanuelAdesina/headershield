@@ -9,11 +9,11 @@ import json
 from datetime import datetime
 from pathlib import Path
 
-from scanner.http_client import fetch_headers
-from analyzer.risk_engine import analyze
-from evidence.capture import capture_evidence
-from evidence.store import save_finding, save_evidence
-from reports.builder import build_audit_report, save_report
+from headershield.scanner.http_client import fetch_headers
+from headershield.analyzer.risk_engine import analyze
+from headershield.evidence.capture import capture_evidence
+from headershield.evidence.store import save_finding, save_evidence
+from headershield.reports.builder import build_audit_report, save_report
 
 
 def run_scan(url: str, save: bool = True) -> dict:

@@ -5,7 +5,7 @@ Transforms ScanResult into human-readable audit reports.
 
 from pathlib import Path
 from typing import Dict
-from core.models.scan_result import ScanResult
+from headershield.core.models.scan_result import ScanResult
 
 
 SEVERITY_ICONS = {

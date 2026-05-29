@@ -1,0 +1,2 @@
+[console_scripts]
+headershield = headershield.cli:main

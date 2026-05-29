@@ -3,7 +3,7 @@ Source of truth for header security rules.
 Every rule defines: what to check, what severity, what risk, what fix.
 """
 
-from core.enums.severity import Severity
+from headershield.core.enums.severity import Severity
 
 
 class HeaderRule:

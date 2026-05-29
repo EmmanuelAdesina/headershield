@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "headershield"
+version = "2.0.0"
+description = "Security header audit engine"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "requests>=2.28.0",
+]
+
+[project.scripts]
+headershield = "headershield.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+headershield = ["config/*.yaml", "reports/templates/*.md"]

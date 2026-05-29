@@ -5,12 +5,12 @@ This is where audit credibility lives.
 """
 
 from typing import Dict, List
-from core.models.finding import Finding
-from core.models.scan_result import ScanResult
-from core.enums.severity import Severity
-from core.enums.status import Status
-from analyzer.header_rules import RULES
-from scanner.headers import extract_security_headers
+from headershield.core.models.finding import Finding
+from headershield.core.models.scan_result import ScanResult
+from headershield.core.enums.severity import Severity
+from headershield.core.enums.status import Status
+from headershield.analyzer.header_rules import RULES
+from headershield.scanner.headers import extract_security_headers
 
 
 def analyze(url: str, raw_headers: Dict[str, str], metadata: Dict) -> ScanResult:
