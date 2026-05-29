@@ -6,8 +6,8 @@ Immutable. Audit-grade.
 from dataclasses import dataclass, field
 from typing import Optional, List
 from datetime import datetime
-from core.enums.severity import Severity
-from core.enums.status import Status
+from headershield.core.enums.severity import Severity
+from headershield.core.enums.status import Status
 
 
 @dataclass(frozen=True)

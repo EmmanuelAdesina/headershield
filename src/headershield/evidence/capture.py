@@ -11,6 +11,8 @@ def capture_evidence(url: str, raw_response: Dict) -> Dict:
     """
     Capture complete evidence package for a single scan.
     """
+    final_url = raw_response.get('final_url', url)
+    
     return {
         "scan_metadata": {
             "tool": "HeaderShield",
@@ -20,7 +22,7 @@ def capture_evidence(url: str, raw_response: Dict) -> Dict:
         },
         "target": {
             "requested_url": url,
-            "final_url": raw_response.get("final_url", url),
+            "final_url": final_url,
             "status_code": raw_response.get("status_code", 0),
             "response_time_ms": raw_response.get("response_time_ms", 0),
         },
@@ -29,7 +31,7 @@ def capture_evidence(url: str, raw_response: Dict) -> Dict:
             "redirect_history": raw_response.get("history", []),
         },
         "reproducibility": {
-            "curl_command": f"curl -I -L "{raw_response.get('final_url', url)}"",
+            "curl_command": 'curl -I -L "' + final_url + '"',
             "verification": "Re-run the curl command to reproduce this exact response",
         },
     }

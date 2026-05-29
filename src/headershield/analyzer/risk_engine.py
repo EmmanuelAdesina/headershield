@@ -20,10 +20,10 @@ def analyze(url: str, raw_headers: Dict[str, str], metadata: Dict) -> ScanResult
     """
     extracted = extract_security_headers(raw_headers)
     findings = []
-
+    
     for header_key, rule in RULES.items():
         value = extracted.get(header_key)
-
+        
         if value is None:
             # Missing
             findings.append(Finding(
@@ -57,13 +57,13 @@ def analyze(url: str, raw_headers: Dict[str, str], metadata: Dict) -> ScanResult
                 header_name=rule.name,
                 status=Status.PRESENT,
                 severity=Severity.INFO,
-                risk_path="No risk — header correctly configured",
+                risk_path="No risk - header correctly configured",
                 evidence=f"Header correctly configured. Value: '{value}'",
                 recommendation="No action required",
                 current_value=value,
                 expected_value=rule.expected,
             ))
-
+    
     return ScanResult(
         url=url,
         findings=findings,

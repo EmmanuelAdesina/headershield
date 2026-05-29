@@ -4,8 +4,8 @@ Domain model: complete scan result for a single target.
 
 from dataclasses import dataclass, field
 from typing import List
-from core.models.finding import Finding
-from core.enums.severity import Severity, SEVERITY_ORDER
+from headershield.core.models.finding import Finding
+from headershield.core.enums.severity import Severity, SEVERITY_ORDER
 
 
 @dataclass
