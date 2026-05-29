@@ -1,6 +1,5 @@
 """
 CLI orchestration layer.
-NO analysis logic. Only coordinates scanner -> analyzer -> evidence -> report.
 """
 
 import argparse
@@ -17,16 +16,16 @@ from headershield.reports.builder import build_audit_report, save_report
 
 
 def run_scan(url: str, save: bool = True) -> dict:
-    """Orchestrate a single scan: fetch -> analyze -> evidence -> report."""
+    """Orchestrate a single scan."""
     print(f"Scanning: {url}")
     
-    # 1. Fetch raw data
+    # 1. Fetch raw data with redirect awareness
     raw = fetch_headers(url)
     if "error" in raw and raw["error"]:
         print(f"Fetch failed: {raw['error']}")
         return {"error": raw["error"], "url": url}
     
-    # 2. Analyze
+    # 2. Analyze with merged headers and confidence
     print("Analyzing headers...")
     metadata = {
         "status_code": raw["status_code"],
@@ -34,18 +33,20 @@ def run_scan(url: str, save: bool = True) -> dict:
         "response_time_ms": raw["response_time_ms"],
         "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
     }
-    result = analyze(url, raw["headers"], metadata)
+    result = analyze(url, raw, metadata)
     
     # 3. Capture evidence
     evidence = capture_evidence(url, raw)
     
     # 4. Build report
-    report = build_audit_report(result)
+    report = build_audit_report(result, raw)
     
     # 5. Save outputs
     if save:
         result_dict = result.to_dict()
         result_dict["evidence"] = evidence
+        result_dict["redirect_count"] = raw.get("redirect_count", 0)
+        result_dict["redirect_chain"] = raw.get("redirect_chain", [])
         
         finding_path = save_finding(result_dict)
         evidence_path = save_evidence(evidence, url)
@@ -56,7 +57,8 @@ def run_scan(url: str, save: bool = True) -> dict:
         print(f"Report: {report_path}")
     
     # 6. Console summary
-    print(f"\nScan Complete: {result.url}")
+    redirect_info = f" | Redirects: {raw.get('redirect_count', 0)}" if raw.get('redirect_count', 0) > 0 else ""
+    print(f"\nScan Complete: {result.url}{redirect_info}")
     print(f"   Issues: {result.total_issues()} | Score: {result.severity_score()}")
     print(f"   P0: {result.critical_count()} | P1: {result.high_count()} | P2: {result.medium_count()} | P3: {result.low_count()}")
     
@@ -88,7 +90,6 @@ def run_batch(csv_path: str):
         results.append(result)
         print()
     
-    # Save batch summary
     summary = {
         "batch_timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
         "total_targets": len(urls),

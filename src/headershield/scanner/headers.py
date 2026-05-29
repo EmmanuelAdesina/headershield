@@ -1,6 +1,6 @@
 """
 Security header extraction.
-Maps raw HTTP headers to normalized security header dict.
+Uses merged headers from redirect chain for accurate evaluation.
 """
 
 from typing import Dict, Optional
@@ -17,10 +17,10 @@ SECURITY_HEADERS = [
 ]
 
 
-def extract_security_headers(raw_headers: Dict[str, str]) -> Dict[str, Optional[str]]:
+def extract_security_headers(raw_response: Dict) -> Dict[str, Optional[str]]:
     """
-    Extract only security-relevant headers from raw response.
-    Returns lowercase keys for consistent lookup.
+    Extract security headers from merged redirect chain headers.
+    This ensures HSTS from intermediate hops is captured.
     """
-    normalized = {k.lower(): v for k, v in raw_headers.items()}
-    return {h: normalized.get(h) for h in SECURITY_HEADERS}
+    merged = raw_response.get("merged_headers", {})
+    return {h: merged.get(h) for h in SECURITY_HEADERS}
