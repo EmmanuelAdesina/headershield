@@ -1,50 +1,132 @@
 """
-headershield.cli
-Command-line interface for HeaderShield.
+CLI orchestration layer.
+NO analysis logic. Only coordinates scanner → analyzer → evidence → report.
 """
 
 import argparse
 import sys
+import json
+from datetime import datetime
 from pathlib import Path
 
-from .scanner.headers import scan_url, get_risk_summary
-from .scanner.batch import scan_single, scan_from_csv
-from .scanner.evidence import generate_evidence_package
-from .reports.markdown import generate_report, generate_batch_report
+from scanner.http_client import fetch_headers
+from analyzer.risk_engine import analyze
+from evidence.capture import capture_evidence
+from evidence.store import save_finding, save_evidence
+from reports.builder import build_audit_report, save_report
+
+
+def run_scan(url: str, save: bool = True) -> dict:
+    """Orchestrate a single scan: fetch → analyze → evidence → report."""
+    print(f"🔍 Fetching: {url}")
+
+    # 1. Fetch raw data
+    raw = fetch_headers(url)
+    if "error" in raw and raw["error"]:
+        print(f"❌ Fetch failed: {raw['error']}")
+        return {"error": raw["error"], "url": url}
+
+    # 2. Analyze
+    print("🧠 Analyzing headers...")
+    metadata = {
+        "status_code": raw["status_code"],
+        "final_url": raw["final_url"],
+        "response_time_ms": raw["response_time_ms"],
+        "timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+    }
+    result = analyze(url, raw["headers"], metadata)
+
+    # 3. Capture evidence
+    evidence = capture_evidence(url, raw)
+
+    # 4. Build report
+    report = build_audit_report(result)
+
+    # 5. Save outputs
+    if save:
+        result_dict = result.to_dict()
+        result_dict["evidence"] = evidence
+
+        finding_path = save_finding(result_dict)
+        evidence_path = save_evidence(evidence, url)
+        report_path = save_report(report, url)
+
+        print(f"💾 Finding: {finding_path}")
+        print(f"💾 Evidence: {evidence_path}")
+        print(f"💾 Report: {report_path}")
+
+    # 6. Console summary
+    print(f"
+📊 Scan Complete: {result.url}")
+    print(f"   Issues: {result.total_issues()} | Score: {result.severity_score()}")
+    print(f"   P0: {result.critical_count()} | P1: {result.high_count()} | P2: {result.medium_count()} | P3: {result.low_count()}")
+
+    if result.active_risk_paths():
+        print(f"
+⚠️  Active Risk Paths:")
+        for rp in result.active_risk_paths():
+            print(f"   - {rp}")
+
+    return result.to_dict()
+
+
+def run_batch(csv_path: str):
+    """Batch scan from CSV."""
+    import csv
+
+    urls = []
+    with open(csv_path, 'r', newline='', encoding='utf-8') as f:
+        reader = csv.reader(f)
+        for row in reader:
+            if row and not row[0].startswith('#'):
+                urls.append(row[0].strip())
+
+    results = []
+    print(f"📁 Batch scan: {len(urls)} targets
+")
+
+    for i, url in enumerate(urls, 1):
+        print(f"[{i}/{len(urls)}] {'='*50}")
+        result = run_scan(url, save=True)
+        results.append(result)
+        print()
+
+    # Save batch summary
+    summary = {
+        "batch_timestamp": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"),
+        "total_targets": len(urls),
+        "successful": len([r for r in results if "error" not in r]),
+        "failed": len([r for r in results if "error" in r]),
+        "results": results,
+    }
+
+    summary_path = Path("outputs/findings") / "_batch_summary.json"
+    with open(summary_path, 'w', encoding='utf-8') as f:
+        json.dump(summary, f, indent=2, ensure_ascii=False)
+
+    print(f"📊 Batch summary: {summary_path}")
+    return summary
 
 
 def main():
     parser = argparse.ArgumentParser(
         prog="headershield",
-        description="Lightweight security header audit tool for web infrastructure",
+        description="HeaderShield v2 — Security Header Audit Engine",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  headershield scan https://example.com          # Single URL scan
-  headershield batch urls.csv                    # Batch scan from CSV
-  headershield scan https://example.com --report  # Scan + generate markdown report
+  headershield scan https://example.com
+  headershield batch targets.csv
         """
     )
 
-    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+    subparsers = parser.add_subparsers(dest="command")
 
-    # Scan command
-    scan_parser = subparsers.add_parser("scan", help="Scan a single URL")
-    scan_parser.add_argument("url", help="Target URL to scan")
-    scan_parser.add_argument("--report", "-r", action="store_true", help="Generate markdown report")
-    scan_parser.add_argument("--output", "-o", default="data/findings", help="Output directory for findings")
-    scan_parser.add_argument("--no-verify", action="store_true", help="Disable SSL verification")
+    scan_parser = subparsers.add_parser("scan", help="Scan single URL")
+    scan_parser.add_argument("url", help="Target URL")
 
-    # Batch command
-    batch_parser = subparsers.add_parser("batch", help="Batch scan from CSV file")
-    batch_parser.add_argument("csv", help="Path to CSV file containing URLs")
-    batch_parser.add_argument("--output", "-o", default="data/findings", help="Output directory")
-    batch_parser.add_argument("--report", "-r", action="store_true", help="Generate batch markdown report")
-
-    # Report command
-    report_parser = subparsers.add_parser("report", help="Generate report from existing JSON findings")
-    report_parser.add_argument("json", help="Path to JSON findings file")
-    report_parser.add_argument("--output", "-o", help="Output markdown file path")
+    batch_parser = subparsers.add_parser("batch", help="Batch scan from CSV")
+    batch_parser.add_argument("csv", help="CSV file with URLs")
 
     args = parser.parse_args()
 
@@ -53,63 +135,9 @@ Examples:
         sys.exit(1)
 
     if args.command == "scan":
-        print(f"🔍 Scanning: {args.url}")
-        result = scan_single(args.url, save=True, output_dir=args.output)
-
-        if "error" in result:
-            print(f"❌ Error: {result['error']}")
-            sys.exit(1)
-
-        # Print quick summary
-        risk = result.get("risk_summary", {})
-        issues = risk.get("total_issues", 0)
-        print(f"
-📊 Results: {issues} issues found")
-
-        for sev, count in risk.get("severity_count", {}).items():
-            if count > 0:
-                print(f"   {sev}: {count}")
-
-        if args.report:
-            safe_name = args.url.replace("https://", "").replace("http://", "").replace("/", "_")
-            report_path = Path(args.output) / f"{safe_name}.md"
-            generate_report(result, str(report_path))
-
-        # Print active risk paths
-        active = risk.get("active_risk_paths", {})
-        if active:
-            print(f"
-⚠️  Active Risk Paths:")
-            for rp in active:
-                print(f"   - {rp}")
-
+        run_scan(args.url)
     elif args.command == "batch":
-        print(f"📁 Batch scanning from: {args.csv}")
-        results = scan_from_csv(args.csv, output_dir=args.output)
-
-        successful = len([r for r in results if "error" not in r])
-        failed = len([r for r in results if "error" in r])
-
-        print(f"
-✅ Complete: {successful} successful, {failed} failed")
-        print(f"💾 Findings saved to: {args.output}/")
-
-        if args.report:
-            summary_path = Path(args.output) / "_summary.json"
-            report_path = Path(args.output) / "_batch_report.md"
-            generate_batch_report(str(summary_path), str(report_path))
-
-    elif args.command == "report":
-        import json
-        with open(args.json, 'r', encoding='utf-8') as f:
-            result = json.load(f)
-
-        output = args.output or args.json.replace(".json", ".md")
-        generate_report(result, output)
-
-    else:
-        parser.print_help()
-        sys.exit(1)
+        run_batch(args.csv)
 
 
 if __name__ == "__main__":

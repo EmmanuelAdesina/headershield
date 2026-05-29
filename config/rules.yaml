@@ -1,0 +1,52 @@
+# HeaderShield Security Rules Configuration
+# Modify this file to add, remove, or adjust header checks
+
+rules:
+  strict-transport-security:
+    name: "Strict-Transport-Security"
+    severity: "P0"
+    risk_path: "SSL stripping / downgrade attack possible"
+    expected: "max-age=31536000; includeSubDomains"
+    recommendation: "Add: Strict-Transport-Security: max-age=31536000; includeSubDomains; preload"
+
+  content-security-policy:
+    name: "Content-Security-Policy"
+    severity: "P0"
+    risk_path: "XSS injection surface possible"
+    expected: "default-src 'self'; script-src 'self'"
+    recommendation: "Add a strict CSP. Start with: default-src 'self'; script-src 'self'; object-src 'none'"
+
+  x-frame-options:
+    name: "X-Frame-Options"
+    severity: "P1"
+    risk_path: "Clickjacking attack possible"
+    expected: "DENY or SAMEORIGIN"
+    recommendation: "Add: X-Frame-Options: DENY or X-Frame-Options: SAMEORIGIN"
+
+  x-content-type-options:
+    name: "X-Content-Type-Options"
+    severity: "P1"
+    risk_path: "MIME sniffing attack possible"
+    expected: "nosniff"
+    recommendation: "Add: X-Content-Type-Options: nosniff"
+
+  referrer-policy:
+    name: "Referrer-Policy"
+    severity: "P2"
+    risk_path: "Session data leakage via referrer"
+    expected: "strict-origin-when-cross-origin or no-referrer"
+    recommendation: "Add: Referrer-Policy: strict-origin-when-cross-origin"
+
+  permissions-policy:
+    name: "Permissions-Policy"
+    severity: "P2"
+    risk_path: "Unwanted browser feature abuse possible"
+    expected: "geolocation=(), microphone=(), camera=()"
+    recommendation: "Add: Permissions-Policy: geolocation=(), microphone=(), camera=()"
+
+  server:
+    name: "Server"
+    severity: "P3"
+    risk_path: "Information disclosure via server metadata"
+    expected: "Hidden or minimal"
+    recommendation: "Remove or minimize Server header. Use: Server: webserver or strip entirely"
