@@ -1,11 +1,16 @@
 """
 headershield.reports.markdown
-Generate human-readable audit reports from scan results.
+Generate human-readable audit reports from scan results (v2 model).
 """
 
-from typing import Dict, List
+from typing import Dict, List, Union
 from pathlib import Path
 from datetime import datetime
+
+from headershield.core.models.scan_result import ScanResult
+from headershield.core.models.finding import Finding
+from headershield.core.enums.severity import Severity, SEVERITY_ORDER
+from headershield.core.enums.status import Status
 
 
 SEVERITY_ICONS = {
@@ -17,153 +22,144 @@ SEVERITY_ICONS = {
 }
 
 
-def generate_report(scan_result: Dict, output_path: str = None) -> str:
+def generate_report(scan_result: Union[ScanResult, Dict], output_path: str = None) -> str:
     """
-    Generate a markdown audit report from a single scan result.
+    Generate a markdown audit report from a ScanResult (v2 model).
+    Accepts either a ScanResult object or its dict representation.
     """
-    url = scan_result.get("url", "Unknown")
-    status = scan_result.get("status_code", "N/A")
-    timestamp = scan_result.get("timestamp", datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC"))
+    if isinstance(scan_result, ScanResult):
+        result = scan_result
+    else:
+        # Build a ScanResult from dict for backward compatibility
+        findings = [
+            Finding(
+                url=f.get("url", ""),
+                header_name=f.get("header_name", "Unknown"),
+                status=Status(f.get("status", "missing")),
+                severity=Severity(f.get("severity", "INFO")),
+                risk_path=f.get("risk_path", ""),
+                evidence=f.get("evidence", ""),
+                recommendation=f.get("recommendation", ""),
+                current_value=f.get("current_value"),
+                expected_value=f.get("expected_value"),
+            )
+            for f in scan_result.get("findings", [])
+        ]
+        result = ScanResult(
+            url=scan_result.get("url", "Unknown"),
+            findings=findings,
+            status_code=scan_result.get("status_code", 0),
+            final_url=scan_result.get("final_url", ""),
+            timestamp=scan_result.get("timestamp", ""),
+        )
+
+    url = result.url
+    status = result.status_code
+    timestamp = result.timestamp or datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
 
     lines = [
-        f"# Security Header Audit Report",
-        f"",
+        "# Security Header Audit Report",
+        "",
         f"**Target:** `{url}`  ",
+        f"**Final URL:** `{result.final_url}`  ",
         f"**Status:** {status}  ",
         f"**Timestamp:** {timestamp}  ",
-        f"**Tool:** HeaderShield v1.0.0  ",
-        f"",
-        f"---",
-        f"",
+        f"**Tool:** HeaderShield v2.0.0  ",
+        "",
+        "---",
+        "",
     ]
 
-    if "error" in scan_result:
-        lines.extend([
-            f"## ⚠️ Scan Error",
-            f"",
-            f"```",
-            f"{scan_result['error']}",
-            f"```",
-            f"",
-        ])
-        report = "
-".join(lines)
-        if output_path:
-            Path(output_path).write_text(report, encoding='utf-8')
-        return report
-
     # Risk Summary
-    risk_summary = scan_result.get("risk_summary", {})
-    active_risks = risk_summary.get("active_risk_paths", {})
-    severity_count = risk_summary.get("severity_count", {})
-    total_issues = risk_summary.get("total_issues", 0)
-
+    risk_paths = result.active_risk_paths()
     lines.extend([
-        f"## Risk Summary",
-        f"",
-        f"| Metric | Value |",
-        f"|--------|-------|",
-        f"| Total Issues | {total_issues} |",
-        f"| Critical | {severity_count.get('CRITICAL', 0)} |",
-        f"| High | {severity_count.get('HIGH', 0)} |",
-        f"| Medium | {severity_count.get('MEDIUM', 0)} |",
-        f"| Low | {severity_count.get('LOW', 0)} |",
-        f"",
+        "## Risk Summary",
+        "",
+        "| Metric | Value |",
+        "|--------|-------|",
+        f"| Total Issues | {result.total_issues()} |",
+        f"| Critical (P0) | {result.critical_count()} |",
+        f"| High (P1) | {result.high_count()} |",
+        f"| Medium (P2) | {result.medium_count()} |",
+        f"| Low (P3) | {result.low_count()} |",
+        f"| Severity Score | {result.severity_score()} |",
+        "",
     ])
 
-    if active_risks:
+    if risk_paths:
         lines.extend([
-            f"### Active Risk Paths",
-            f"",
+            "### Active Risk Paths",
+            "",
         ])
-        for risk, count in active_risks.items():
+        for risk, count in risk_paths.items():
             lines.append(f"- {risk}")
-        lines.append(f"")
+        lines.append("")
 
     lines.extend([
-        f"---",
-        f"",
-        f"## Findings",
-        f"",
+        "---",
+        "",
+        "## Findings",
+        "",
     ])
 
     # Sort findings by severity
-    severity_order = {"CRITICAL": 0, "HIGH": 1, "MEDIUM": 2, "LOW": 3, "INFO": 4}
-    findings = scan_result.get("findings", [])
+    sorted_findings = sorted(result.findings, key=lambda f: SEVERITY_ORDER.get(f.severity, 99))
 
-    # Convert findings to dict if they're objects
-    if findings and hasattr(findings[0], 'severity'):
-        findings = [
-            {
-                "header": f.header_name,
-                "present": f.present,
-                "value": f.value,
-                "expected": f.expected,
-                "severity": f.severity.value,
-                "risk_paths": [rp.value for rp in f.risk_paths],
-                "remediation": f.remediation,
-                "evidence": f.evidence,
-            }
-            for f in findings
-        ]
-
-    findings.sort(key=lambda x: severity_order.get(x.get("severity", "INFO"), 99))
-
-    for finding in findings:
-        sev = finding.get("severity", "INFO")
+    for finding in sorted_findings:
+        sev = finding.severity.value
         icon = SEVERITY_ICONS.get(sev, "⚪")
-        header = finding.get("header", "Unknown")
-        present = "✅ Present" if finding.get("present") else "❌ Missing"
-        value = finding.get("value") or "N/A"
+        header = finding.header_name
+        status_str = finding.status.value
+
+        # Extract confidence from evidence if present
+        confidence = "HIGH"
+        if "Confidence:" in finding.evidence:
+            try:
+                confidence = finding.evidence.split("Confidence:")[1].split(".")[0].strip()
+            except Exception:
+                pass
 
         lines.extend([
             f"### {icon} {header}",
-            f"",
-            f"- **Status:** {present}",
-            f"- **Current Value:** `{value}`",
-            f"- **Expected:** `{finding.get('expected', 'N/A')}`",
+            "",
+            f"- **Status:** {status_str}",
             f"- **Severity:** {sev}",
-            f"",
-        ])
-
-        if finding.get("risk_paths"):
-            lines.append(f"**Risk Paths:**")
-            for rp in finding["risk_paths"]:
-                lines.append(f"- {rp}")
-            lines.append(f"")
-
-        lines.extend([
-            f"**Remediation:**",
-            f"```",
-            f"{finding.get('remediation', 'N/A')}",
-            f"```",
-            f"",
-            f"**Evidence:**",
-            f"```",
-            f"{finding.get('evidence', 'N/A')}",
-            f"```",
-            f"",
-            f"---",
-            f"",
+            f"- **Confidence:** {confidence}",
+            f"- **Current Value:** `{finding.current_value or 'N/A'}`",
+            f"- **Expected:** `{finding.expected_value or 'N/A'}`",
+            "",
+            f"**Risk Path:** {finding.risk_path}",
+            "",
+            "**Evidence:**",
+            "```",
+            f"{finding.evidence}",
+            "```",
+            "",
+            "**Recommendation:**",
+            "```",
+            f"{finding.recommendation}",
+            "```",
+            "",
+            "---",
+            "",
         ])
 
     # Footer
     lines.extend([
-        f"",
-        f"## Reproducibility",
-        f"",
-        f"```bash",
-        f"# Re-run this scan",
-        f"python -m headershield scan {url}",
-        f"```",
-        f"",
-        f"---",
-        f"",
-        f"*Report generated by HeaderShield — lightweight security header audit tool.*",
+        "",
+        "## Reproducibility",
+        "",
+        "```bash",
+        "# Re-run this scan",
+        f"headershield scan {url}",
+        "```",
+        "",
+        "---",
+        "",
+        "*Report generated by HeaderShield — lightweight security header audit tool.*",
     ])
 
-    report = "
-".join(lines)
+    report = "\n".join(lines)
 
     if output_path:
         Path(output_path).write_text(report, encoding='utf-8')
@@ -182,46 +178,47 @@ def generate_batch_report(summary_path: str, output_path: str = None) -> str:
         summary = json.load(f)
 
     lines = [
-        f"# Batch Security Header Audit Report",
-        f"",
-        f"**Total Scanned:** {summary.get('total_scanned', 0)}  ",
+        "# Batch Security Header Audit Report",
+        "",
+        f"**Total Targets:** {summary.get('total_targets', 0)}  ",
         f"**Successful:** {summary.get('successful', 0)}  ",
         f"**Failed:** {summary.get('failed', 0)}  ",
-        f"**Tool:** HeaderShield v1.0.0  ",
-        f"",
-        f"---",
-        f"",
-        f"## Per-Target Summary",
-        f"",
-        f"| Target | Status | Issues | Critical | High | Medium | Low |",
-        f"|--------|--------|--------|----------|------|--------|-----|",
+        f"**Timestamp:** {summary.get('batch_timestamp', 'N/A')}  ",
+        f"**Tool:** HeaderShield v2.0.0  ",
+        "",
+        "---",
+        "",
+        "## Per-Target Summary",
+        "",
+        "| Target | Status | Issues | Critical | High | Medium | Low | Score |",
+        "|--------|--------|--------|----------|------|--------|-----|-------|",
     ]
 
     for result in summary.get("results", []):
         url = result.get("url", "Unknown")
 
         if "error" in result:
-            lines.append(f"| `{url}` | ❌ Error | - | - | - | - | - |")
+            lines.append(f"| `{url}` | ❌ Error | - | - | - | - | - | - |")
             continue
 
-        risk = result.get("risk_summary", {})
-        sev = risk.get("severity_count", {})
-        issues = risk.get("total_issues", 0)
+        counts = result.get("issue_counts", {})
+        score = result.get("severity_score", 0)
 
         lines.append(
-            f"| `{url}` | ✅ {result.get('status_code', 'OK')} | {issues} | "
-            f"{sev.get('CRITICAL', 0)} | {sev.get('HIGH', 0)} | {sev.get('MEDIUM', 0)} | {sev.get('LOW', 0)} |"
+            f"| `{url}` | ✅ {result.get('status_code', 'OK')} | "
+            f"{counts.get('total', 0)} | "
+            f"{counts.get('critical', 0)} | {counts.get('high', 0)} | "
+            f"{counts.get('medium', 0)} | {counts.get('low', 0)} | {score} |"
         )
 
     lines.extend([
-        f"",
-        f"---",
-        f"",
-        f"*Batch report generated by HeaderShield.*",
+        "",
+        "---",
+        "",
+        "*Batch report generated by HeaderShield.*",
     ])
 
-    report = "
-".join(lines)
+    report = "\n".join(lines)
 
     if output_path:
         Path(output_path).write_text(report, encoding='utf-8')

@@ -1,19 +1,18 @@
 """
 headershield.scanner.batch
-Batch scanning for multiple URLs with CSV/JSON I/O.
+Batch scanning for multiple URLs with CSV/JSON I/O (v2 model).
 """
 
 import csv
 import json
 from typing import List, Dict
 from pathlib import Path
-from .headers import scan_url, get_risk_summary
-from .evidence import generate_evidence_package
+from headershield.cli import run_scan
 
 
-def scan_from_csv(csv_path: str, output_dir: str = "data/findings") -> List[Dict]:
+def scan_from_csv(csv_path: str, output_dir: str = "outputs/findings") -> List[Dict]:
     """
-    Read URLs from CSV, scan each, write individual JSON findings.
+    Read URLs from CSV, scan each using the v2 pipeline, write individual JSON findings.
     CSV format: single column 'url' or first column treated as URL.
     """
     urls = []
@@ -23,7 +22,9 @@ def scan_from_csv(csv_path: str, output_dir: str = "data/findings") -> List[Dict
 
         # Detect if first row is header
         if header and any(h.lower() in ['url', 'domain', 'website', 'target'] for h in header):
-            url_col_idx = [h.lower() for h in header].index(next(h for h in header if h.lower() in ['url', 'domain', 'website', 'target']))
+            url_col_idx = [h.lower() for h in header].index(
+                next(h for h in header if h.lower() in ['url', 'domain', 'website', 'target'])
+            )
             for row in reader:
                 if len(row) > url_col_idx:
                     urls.append(row[url_col_idx].strip())
@@ -42,32 +43,7 @@ def scan_from_csv(csv_path: str, output_dir: str = "data/findings") -> List[Dict
 
     for i, url in enumerate(urls, 1):
         print(f"[{i}/{len(urls)}] Scanning: {url}")
-
-        result = scan_url(url)
-
-        if "error" not in result:
-            findings_dict = [
-                {
-                    "header": f.header_name,
-                    "present": f.present,
-                    "value": f.value,
-                    "expected": f.expected,
-                    "severity": f.severity.value,
-                    "risk_paths": [rp.value for rp in f.risk_paths],
-                    "remediation": f.remediation,
-                    "evidence": f.evidence,
-                }
-                for f in result["findings"]
-            ]
-
-            result["risk_summary"] = get_risk_summary(result["findings"])
-
-            # Write individual finding
-            safe_name = url.replace("https://", "").replace("http://", "").replace("/", "_")
-            out_file = output_path / f"{safe_name}.json"
-            with open(out_file, 'w', encoding='utf-8') as f:
-                json.dump(result, f, indent=2, ensure_ascii=False)
-
+        result = run_scan(url, save=True)
         results.append(result)
 
     # Write summary
@@ -78,28 +54,14 @@ def scan_from_csv(csv_path: str, output_dir: str = "data/findings") -> List[Dict
         "results": results,
     }
 
-    with open(output_path / "_summary.json", 'w', encoding='utf-8') as f:
+    summary_path = output_path / "_summary.json"
+    with open(summary_path, 'w', encoding='utf-8') as f:
         json.dump(summary, f, indent=2, ensure_ascii=False)
 
+    print(f"Batch summary: {summary_path}")
     return results
 
 
-def scan_single(url: str, save: bool = True, output_dir: str = "data/findings") -> Dict:
-    """Scan a single URL and optionally save to JSON."""
-    result = scan_url(url)
-
-    if save and "error" not in result:
-        output_path = Path(output_dir)
-        output_path.mkdir(parents=True, exist_ok=True)
-
-        safe_name = url.replace("https://", "").replace("http://", "").replace("/", "_")
-        out_file = output_path / f"{safe_name}.json"
-
-        result["risk_summary"] = get_risk_summary(result["findings"])
-
-        with open(out_file, 'w', encoding='utf-8') as f:
-            json.dump(result, f, indent=2, ensure_ascii=False)
-
-        print(f"Saved: {out_file}")
-
-    return result
+def scan_single(url: str, save: bool = True) -> Dict:
+    """Scan a single URL using the v2 pipeline and optionally save to JSON."""
+    return run_scan(url, save=save)

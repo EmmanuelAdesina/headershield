@@ -37,7 +37,7 @@ def capture_raw_response(url: str, timeout: int = 10, verify_ssl: bool = True) -
         "response_headers": dict(response.headers),
         "response_size_bytes": len(response.content),
         "redirect_history": [r.url for r in response.history],
-        "reproducible_curl": f"curl -I -L "{url}"",
+        "reproducible_curl": f'curl -I -L "{url}"',
     }
 
 
@@ -50,7 +50,7 @@ def generate_evidence_package(url: str, findings: List[Dict]) -> Dict:
     return {
         "scan_metadata": {
             "tool": "headershield",
-            "version": "1.0.0",
+            "version": "2.0.0",
             "scan_type": "passive_header_audit",
             "timestamp": raw.get("timestamp"),
         },
